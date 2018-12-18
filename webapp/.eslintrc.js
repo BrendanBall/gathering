@@ -10,6 +10,8 @@ module.exports = {
     node: true
   },
   globals: {
-    fetch: true
+    fetch: true,
+    RTCPeerConnection: true,
+    RTCIceCandidate: true
   }
 }
