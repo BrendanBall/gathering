@@ -3,27 +3,26 @@ type Query {
 }
 
 type Mutation {
-    createRoom(input: CreateRoomInput!): Room!
-    joinRoom(id: ID!, user: JoinRoomUserInput!): Room!
+    joinRoom(roomId: ID!, userId: ID!): Room!
+    signal(input: SignalInput!): Boolean!
+}
+
+type Subscription {
+    userJoined(roomId: ID!): Room
 }
 
 type Room {
     id: ID!
-    name: String!
     users: [User!]!
 }
 
 type User {
     id: ID!
-    name: String!
 }
 
-input CreateRoomInput {
-    id: ID!
-    name: String!
-}
-
-input JoinRoomUserInput {
-    id: ID!
-    name: String!
+input SignalInput {
+    type: String!
+    userId: ID!
+    roomId: ID!
+    sdp: String!
 }

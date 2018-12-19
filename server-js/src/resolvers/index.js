@@ -1,11 +1,13 @@
-import { rooms, createRoom, joinRoom } from './room'
+import { rooms, joinRoom, userJoined } from './room'
 
 export default {
   Query: {
     rooms
   },
   Mutation: {
-    createRoom,
     joinRoom
+  },
+  Subscription: {
+    userJoined
   }
 }
