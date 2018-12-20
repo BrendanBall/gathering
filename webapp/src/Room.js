@@ -1,12 +1,77 @@
-import React, { useState, useEffect } from 'react'
-import Video from './Video'
+import React, { useEffect, useReducer } from 'react'
 import 'webrtc-adapter'
+import gql from 'graphql-tag'
+import client from './graphql'
+import Video from './Video'
 
 export default function Room (args) {
-  const [localStream, setLocalStream] = useState(null)
-  const [remoteStream, setRemoteStream] = useState(null)
-  const [localPeerConnection, setLocalPeerConnection] = useState(null)
-  const [remotePeerConnection, setRemotePeerConnection] = useState(null)
+  const roomId = args.match.params.id
+  const [state, dispatch] = useVideoCallReducer(roomId)
+
+  return (
+    <div className="Room">
+      <h1>{roomId}</h1>
+      <Video className="local" title="local" stream={state.localStream} />
+      <Video className="remote" title="remote" stream={state.remoteStream} />
+      <div>
+        <button id="callButton" onClick={() => dispatch(startCall())}>Call</button>
+        <button id="hangupButton" onClick={() => dispatch(stopCall(state))}>Hang Up</button>
+      </div>
+    </div>
+  )
+}
+
+function stopCall (state) {
+  state.localPeerConnection && state.localPeerConnection.close()
+  state.remotePeerConnection && state.remotePeerConnection.close()
+  return { type: 'stop' }
+}
+
+function startCall () {
+  let localPeerConnection = new RTCPeerConnection()
+  let remotePeerConnection = new RTCPeerConnection()
+  return { type: 'start', localPeerConnection, remotePeerConnection }
+}
+
+function videoCallReducer (state, action) {
+  switch (action.type) {
+    case 'start':
+      return {
+        ...state,
+        status: 'started',
+        localPeerConnection: action.localPeerConnection,
+        remotePeerConnection: action.remotePeerConnection
+      }
+    case 'stop':
+      return {
+        ...state,
+        status: 'stopped',
+        localPeerConnection: null,
+        remotePeerConnection: null
+      }
+    case 'gotLocalStream':
+      return {
+        ...state,
+        localStream: action.stream
+      }
+    case 'gotRemoteStream':
+      return {
+        ...state,
+        remoteStream: action.stream
+      }
+    default:
+      return state
+  }
+}
+
+function useVideoCallReducer (roomId) {
+  const [state, dispatch] = useReducer(videoCallReducer, {
+    status: 'pending',
+    localPeerConnection: null,
+    remotePeerConnection: null,
+    localStream: null,
+    remoteStream: null
+  })
   const constraints = {
     audio: false,
     video: true
@@ -16,9 +81,35 @@ export default function Room (args) {
     offerToReceiveVideo: 1
   }
 
+  let { localPeerConnection, remotePeerConnection, localStream } = state
+
+  // const iceServers = [{
+  //   urls: 'stun:localhost:3478',
+  //   username: 'user',
+  //   credential: 'password'
+  // }]
+
+  useEffect(() => {
+    const query = gql`subscription Signals($roomId: ID!) {
+      signals(roomId: $roomId) {
+        type
+        userId
+        roomId
+        sdp
+      }
+    }`
+    client.subscribe({
+      query,
+      variables: { roomId },
+      fetchPolicy: 'no-cache'
+    }).subscribe(signal => {
+      console.log('got signal: ', signal)
+    })
+  }, [])
+
   useEffect(() => {
     navigator.mediaDevices.getUserMedia(constraints)
-      .then(setLocalStream)
+      .then(stream => dispatch({ type: 'gotLocalStream', stream }))
   }, [])
 
   function getOtherPeer (peerConnection) {
@@ -50,7 +141,7 @@ export default function Room (args) {
   }
 
   function gotRemoteMediaStream (event) {
-    setRemoteStream(event.stream)
+    dispatch({ type: 'gotRemoteStream', stream: event.stream })
   }
 
   function setSessionDescriptionError (error) {
@@ -77,15 +168,9 @@ export default function Room (args) {
       .catch(setSessionDescriptionError)
   }
 
-  function handleCall () {
-    setLocalPeerConnection(new RTCPeerConnection())
-    setRemotePeerConnection(new RTCPeerConnection())
-  }
-
   useEffect(() => {
     if (localPeerConnection && remotePeerConnection) {
       localPeerConnection.addEventListener('icecandidate', handleConnection)
-
       remotePeerConnection.addEventListener('icecandidate', handleConnection)
       remotePeerConnection.addEventListener('addstream', gotRemoteMediaStream)
 
@@ -93,22 +178,8 @@ export default function Room (args) {
       localPeerConnection.createOffer(offerOptions)
         .then(createdOffer).catch(setSessionDescriptionError)
     }
+    return () => stopCall(state)
   }, [localPeerConnection, remotePeerConnection])
 
-  function handleHangup () {
-    localPeerConnection.close()
-    remotePeerConnection.close()
-  }
-
-  return (
-    <div className="Room">
-      <h1>{args.match.params.id}</h1>
-      <Video className="local" title="local" stream={localStream} />
-      <Video className="remote" title="remote" stream={remoteStream} />
-      <div>
-        <button id="callButton" onClick={handleCall}>Call</button>
-        <button id="hangupButton" onClick={handleHangup}>Hang Up</button>
-      </div>
-    </div>
-  )
+  return [state, dispatch]
 }

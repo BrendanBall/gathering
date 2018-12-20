@@ -9,6 +9,7 @@ type Mutation {
 
 type Subscription {
     userJoined(roomId: ID!): Room
+    signals(roomId: ID!, userId: ID!): Signal
 }
 
 type Room {
@@ -21,6 +22,13 @@ type User {
 }
 
 input SignalInput {
+    type: String!
+    userId: ID!
+    roomId: ID!
+    sdp: String!
+}
+
+type Signal {
     type: String!
     userId: ID!
     roomId: ID!

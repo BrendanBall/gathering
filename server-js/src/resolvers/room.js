@@ -26,15 +26,7 @@ function roomsToGraphql (rooms) {
 export const userJoined = {
   resolve: room => room,
   subscribe: withFilter(
-    (obj, args, { pubsub }) => {
-      console.log('subscribing')
-      return pubsub.asyncIterator(USER_JOINED_TOPIC)
-    },
-    (room, { roomId }) => {
-      let f = room.id === roomId
-      console.log(`filtering subscription: room: ${JSON.stringify(room)}, roomId: ${roomId}. should filter: ${f}`)
-      return f
-    }
+    (obj, args, { pubsub }) => pubsub.asyncIterator(USER_JOINED_TOPIC),
+    (room, { roomId }) => room.id === roomId
   )
-
 }

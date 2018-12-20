@@ -22,7 +22,7 @@ export default function JoinRoom () {
       mutation: joinRoomQuery,
       variables: { roomId, userId }
     })
-      .then((result) => history.push(`/r/${roomId}`))
+      .then(() => history.push(`/r/${roomId}`))
   }
 
   return (
