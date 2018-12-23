@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useContext } from 'react'
 import useReactRouter from 'use-react-router'
 import gql from 'graphql-tag'
 import client from './graphql'
+import { UserContext } from './context'
 
 const joinRoomQuery = gql`mutation JoinRoom($roomId: ID!, $userId: ID!) {
   joinRoom(roomId: $roomId, userId: $userId) {
@@ -14,7 +15,7 @@ const joinRoomQuery = gql`mutation JoinRoom($roomId: ID!, $userId: ID!) {
 
 export default function JoinRoom () {
   const [roomId, setRoomId] = useState('')
-  const [userId, setUserId] = useState('')
+  const { userId } = useContext(UserContext)
   const { history } = useReactRouter()
   const joinRoom = (event) => {
     event.preventDefault()
@@ -28,14 +29,18 @@ export default function JoinRoom () {
   return (
     <div className="JoinRoom">
       <h1>Join A Room</h1>
-      <form onSubmit={joinRoom}>
-        <label>
-        Room
-          <input type="text" value={roomId} onChange={event => setRoomId(event.target.value)} />
-          <input type="text" value={userId} onChange={event => setUserId(event.target.value)} />
-        </label>
-        <input type="submit" value="Join" />
-      </form>
+      <UserContext.Consumer>
+        {({ userId, setUser }) => (
+          <form onSubmit={joinRoom}>
+            <label>
+            Room
+              <input type="text" value={roomId} onChange={event => setRoomId(event.target.value)} />
+              <input type="text" value={userId || ''} onChange={event => setUser(event.target.value)} />
+            </label>
+            <input type="submit" value="Join" />
+          </form>
+        )}
+      </UserContext.Consumer>
     </div>
   )
 }

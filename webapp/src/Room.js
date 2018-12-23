@@ -1,12 +1,16 @@
-import React, { useEffect, useReducer } from 'react'
+import React, { useEffect, useReducer, useContext } from 'react'
 import 'webrtc-adapter'
 import gql from 'graphql-tag'
 import client from './graphql'
 import Video from './Video'
+import { UserContext } from './context'
 
 export default function Room (args) {
+  const { userId } = useContext(UserContext)
   const roomId = args.match.params.id
-  const [state, dispatch] = useVideoCallReducer(roomId)
+  const [state, dispatch] = useVideoCallReducer(roomId, userId)
+
+  // useEffect(() => dispatch(startCall()), [])
 
   return (
     <div className="Room">
@@ -28,7 +32,12 @@ function stopCall (state) {
 }
 
 function startCall () {
-  let localPeerConnection = new RTCPeerConnection()
+  const iceServers = [{
+    urls: 'stun:localhost:3478',
+    username: 'user',
+    credential: 'password'
+  }]
+  let localPeerConnection = new RTCPeerConnection({ iceServers })
   let remotePeerConnection = new RTCPeerConnection()
   return { type: 'start', localPeerConnection, remotePeerConnection }
 }
@@ -64,7 +73,7 @@ function videoCallReducer (state, action) {
   }
 }
 
-function useVideoCallReducer (roomId) {
+function useVideoCallReducer (roomId, userId) {
   const [state, dispatch] = useReducer(videoCallReducer, {
     status: 'pending',
     localPeerConnection: null,
@@ -83,15 +92,9 @@ function useVideoCallReducer (roomId) {
 
   let { localPeerConnection, remotePeerConnection, localStream } = state
 
-  // const iceServers = [{
-  //   urls: 'stun:localhost:3478',
-  //   username: 'user',
-  //   credential: 'password'
-  // }]
-
   useEffect(() => {
-    const query = gql`subscription Signals($roomId: ID!) {
-      signals(roomId: $roomId) {
+    const query = gql`subscription Signals($roomId: ID!, $userId: ID!) {
+      signals(roomId: $roomId, userId: $userId) {
         type
         userId
         roomId
@@ -100,7 +103,7 @@ function useVideoCallReducer (roomId) {
     }`
     client.subscribe({
       query,
-      variables: { roomId },
+      variables: { roomId, userId },
       fetchPolicy: 'no-cache'
     }).subscribe(signal => {
       console.log('got signal: ', signal)
@@ -123,15 +126,22 @@ function useVideoCallReducer (roomId) {
   }
 
   function handleConnection (event) {
-    const peerConnection = event.target
-    const iceCandidate = event.candidate
-
-    if (iceCandidate) {
-      const newIceCandidate = new RTCIceCandidate(iceCandidate)
-      const otherPeer = getOtherPeer(peerConnection)
-
-      otherPeer.addIceCandidate(newIceCandidate)
-        .catch((error) => { handleConnectionFailure(peerConnection, error) })
+    const candidate = event.candidate
+    if (candidate) {
+      const query = gql`mutation Signal($input: SignalInput!) {
+        signal(input: $input) 
+      }`
+      client.mutate({
+        mutation: query,
+        variables: {
+          input: {
+            type: 'new-ice-candidate',
+            userId,
+            roomId,
+            sdp: JSON.stringify(candidate)
+          }
+        }
+      })
     }
   }
 
@@ -141,7 +151,7 @@ function useVideoCallReducer (roomId) {
   }
 
   function gotRemoteMediaStream (event) {
-    dispatch({ type: 'gotRemoteStream', stream: event.stream })
+    dispatch({ type: 'gotRemoteStream', stream: event.streams[0] })
   }
 
   function setSessionDescriptionError (error) {
@@ -169,17 +179,17 @@ function useVideoCallReducer (roomId) {
   }
 
   useEffect(() => {
-    if (localPeerConnection && remotePeerConnection) {
-      localPeerConnection.addEventListener('icecandidate', handleConnection)
-      remotePeerConnection.addEventListener('icecandidate', handleConnection)
-      remotePeerConnection.addEventListener('addstream', gotRemoteMediaStream)
+    if (localPeerConnection && remotePeerConnection && localStream) {
+      localPeerConnection.onicecandidate = handleConnection
+      remotePeerConnection.onicecandidate = handleConnection
+      remotePeerConnection.ontrack = gotRemoteMediaStream
 
-      localPeerConnection.addStream(localStream)
+      localStream.getTracks().forEach(track => localPeerConnection.addTrack(track, localStream))
       localPeerConnection.createOffer(offerOptions)
         .then(createdOffer).catch(setSessionDescriptionError)
     }
     return () => stopCall(state)
-  }, [localPeerConnection, remotePeerConnection])
+  }, [localPeerConnection, remotePeerConnection, localStream])
 
   return [state, dispatch]
 }
